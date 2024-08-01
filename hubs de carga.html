@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa de Hubs de Carga</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        header {
+            background-color: #0057B8;
+            padding: 10px;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        #logo {
+            height: 50px;
+        }
+
+        #map {
+            height: 100vh;
+            width: 75%;
+            margin-top: 60px; /* espacio para el header */
+            float: left;
+        }
+
+        #info {
+            width: 25%;
+            float: left;
+            padding: 10px;
+            background-color: #f5f5f5;
+            margin-top: 60px; /* espacio para el header */
+            box-sizing: border-box;
+        }
+
+        input {
+            position: absolute;
+            top: 70px;
+            left: 20px;
+            z-index: 1;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+
+        button {
+            position: absolute;
+            top: 70px;
+            left: 200px;
+            z-index: 1;
+            padding: 10px;
+            border: none;
+            background-color: #0057B8;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #003b6f;
+        }
+
+        .hub-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .hub-list li {
+            padding: 5px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .hub-list .active {
+            color: green;
+        }
+
+        .hub-list .under-construction {
+            color: red;
+        }
+
+        .hub-list .within-radius {
+            background-color: #d3ffd3;
+        }
+
+        .hub-list .outside-radius {
+            background-color: #ffd3d3;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <img src="https://raw.githubusercontent.com/ppgaticac/mapa_hubs_carga/main/logo-ea1fcd3296ac48693db3c00b710e2381%20(1).jpg" alt="Logo de la empresa" id="logo">
+    </header>
+    <div id="map"></div>
+    <div id="info">
+        <input id="address" type="text" placeholder="Buscar dirección">
+        <button onclick="geocodeAddress()">Buscar</button>
+        <ul id="hubList" class="hub-list"></ul>
+    </div>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAovSlHVEYWgZf3a_Skux_nwRCcPZUM6rI&libraries=places"></script>
+    <script>
+        let map;
+        let geocoder;
+        let marker;
+        let closestHubMarker;
+        let closestHubCircle;
+        let hubs = [
+            { name: "Ciudad del niño", status: 'under_construction', address: "Gran Av. José Miguel Carrera 6150, 8930520 San Miguel, Región Metropolitana", lat: -33.5033, lng: -70.6405 },
+            { name: "Florida center", status: 'under_construction', address: "Av. Vicuña Mackenna Ote. 6100, 8242155 La Florida, Región Metropolitana", lat: -33.4666, lng: -70.5985 },
+            { name: "Portal el Llano", status: 'under_construction', address: "Llano Subercaseaux, 8910339 San Miguel, Región Metropolitana", lat: -33.5036, lng: -70.6485 },
+            { name: "Alto San Francisco", status: 'under_construction', address: "San Francisco 75, Santiago, Región Metropolitana", lat: -33.4644, lng: -70.6466 },
+            { name: "Nathaniel Cox", status: 'under_construction', address: "Nataniel Cox 620, 8331081 Santiago, Región Metropolitana", lat: -33.4656, lng: -70.6501 },
+            { name: "Vicuña Mackenna", status: 'under_construction', address: "Av. Vicuña Mackenna 665, 8330435 Santiago, Región Metropolitana", lat: -33.4578, lng: -70.6506 },
+            { name: "Ñuble", status: 'under_construction', address: "Av. Vicuña Mackenna 1700, Santiago, Ñuñoa, Región Metropolitana", lat: -33.4591, lng: -70.6292 },
+            { name: "Independencia", status: 'under_construction', address: "Av. Independencia 565, 8380538 Independencia, Región Metropolitana", lat: -33.4262, lng: -70.6518 },
+            { name: "Parque Arauco", status: 'active', address: "Av. Pdte. Kennedy 5413, 7550000 Las Condes, Región Metropolitana", lat: -33.4071, lng: -70.6010 },
+            { name: "Espacio Urbano Las Rejas", status: 'active', address: "Av. María Rozas Velásquez 73, 9170428 Santiago, Estación Central, Región Metropolitana", lat: -33.4571, lng: -70.6498 },
+        ];
+
+        function initMap() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: -33.4489, lng: -70.6693 }, // Coordenadas de Santiago
+                zoom: 12, // Nivel de zoom ajustado para la Región Metropolitana
+                styles: [{ featureType: 'all', stylers: [{ color: '#0057B8' }] }]
+            });
+
+            geocoder = new google.maps.Geocoder();
+
+            hubs.forEach(hub => {
+                new google.maps.Marker({
+                    position: { lat: hub.lat, lng: hub.lng },
+                    map: map,
+                    icon: hub.status === 'active' ? 'http://maps.google.com/mapfiles/ms/icons/green-dot.png' : 'http://maps.google.com/mapfiles/ms/icons/red-dot.png',
+                    title: hub.name
+                });
+            });
+
+            updateHubList();
+        }
+
+        function geocodeAddress() {
+            const address = document.getElementById('address').value;
+            geocoder.geocode({ address: address }, (results, status) => {
+                if (status === 'OK') {
+                    const location = results[0].geometry.location;
+                    if (marker) marker.setMap(null); // Limpiar el marcador anterior
+                    marker = new google.maps.Marker({
+                        position: location,
+                        map: map,
+                        icon: 'http://maps.google.com/mapfiles/ms/icons/cyan-dot.png'
+                    });
+                    map.setCenter(location);
+                    findClosestHub(location);
+                } else {
+                    alert('Geocode was not successful for the following reason: ' + status);
+                }
+            });
+        }
+
+        function findClosestHub(addressLocation) {
+            let closestHub = null;
+            let minDistance = Infinity;
+
+            hubs.forEach(hub => {
+                const hubLocation = new google.maps.LatLng(hub.lat, hub.lng);
+                const distance = google.maps.geometry.spherical.computeDistanceBetween(addressLocation, hubLocation);
+
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestHub = hub;
+                }
+            });
+
+            if (closestHubMarker) closestHubMarker.setMap(null); // Limpiar el marcador anterior
+            if (closestHubCircle) closestHubCircle.setMap(null); // Limpiar el círculo anterior
+
+            closestHubMarker = new google.maps.Marker({
+                position: { lat: closestHub.lat, lng: closestHub.lng },
+                map: map,
+                icon: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+                title: closestHub.name
+            });
+
+            closestHubCircle = new google.maps.Circle({
+                map: map,
+                radius: 3000, // metros
+                fillColor: '#00BFFF',
+                fillOpacity: 0.2,
+                strokeColor: '#00BFFF',
+                strokeOpacity: 0.8,
+                strokeWeight: 2,
+                center: { lat: closestHub.lat, lng: closestHub.lng }
+            });
+
+            updateHubList(addressLocation);
+        }
+
+        function updateHubList(addressLocation = null) {
+            const hubList = document.getElementById('hubList');
+            hubList.innerHTML = '';
+
+            hubs.forEach(hub => {
+                const hubLocation = new google.maps.LatLng(hub.lat, hub.lng);
+                let distance = null;
+                if (addressLocation) {
+                    distance = google.maps.geometry.spherical.computeDistanceBetween(addressLocation, hubLocation);
+                }
+                const listItem = document.createElement('li');
+                listItem.textContent = `${hub.name} - ${hub.address}`;
+                listItem.classList.add(hub.status === 'active' ? 'active' : 'under-construction');
+
+                if (distance !== null) {
+                    if (distance <= 3000) {
+                        listItem.classList.add('within-radius');
+                        listItem.classList.remove('outside-radius');
+                    } else {
+                        listItem.classList.add('outside-radius');
+                        listItem.classList.remove('within-radius');
+                    }
+                }
+
+                hubList.appendChild(listItem);
+            });
+        }
+
+        window.onload = initMap;
+    </script>
+</body>
+</html>
